@@ -30,10 +30,20 @@ async function main(): Promise<void> {
       input: process.stdin,
       crlfDelay: Number.POSITIVE_INFINITY,
     });
+    // Se o leitor do stdout sumir, a escrita falha (EPIPE). Fecha a entrada para o sidecar
+    // cancelar o chat ativo e terminar, e o erro é relançado para sair com código diferente de zero.
+    let stdoutError: Error | undefined;
+    process.stdout.on("error", (error: Error) => {
+      stdoutError = error;
+      lines.close();
+    });
     await runSidecar(lines, (line) => process.stdout.write(`${line}\n`), {
       provider,
       store,
     });
+    if (stdoutError !== undefined) {
+      throw stdoutError;
+    }
   } finally {
     store.close();
   }
