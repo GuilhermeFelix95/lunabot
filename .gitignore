@@ -1,0 +1,18 @@
+# Dependências
+node_modules/
+
+# Build do Rust (Tauri)
+rust/target/
+apps/desktop/src-tauri/target/
+
+# Saída de build
+dist/
+
+# Variáveis de ambiente e segredos
+.env
+.env.*
+
+# Logs e arquivos temporários
+*.log
+npm-debug.log*
+pnpm-debug.log*
