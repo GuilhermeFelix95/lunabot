@@ -2,12 +2,16 @@ import {
   isAgentRequest,
   type AgentEvent,
   type AgentRequest,
+  type MessageStatus,
 } from "@lunabot/shared";
 import type { AiProvider } from "./provider.ts";
 import type { ChatStore, ConversationRecord } from "./store/chat-store.ts";
 
 /** Tamanho máximo do título de uma conversa, tirado da primeira mensagem. */
 const TITLE_MAX_LENGTH = 60;
+
+/** Status de uma resposta que terminou sem concluir. */
+type InterruptedStatus = Exclude<MessageStatus, "complete">;
 
 export interface SidecarDeps {
   provider: AiProvider;
@@ -71,6 +75,23 @@ async function handleChatSend(
   // que chegue logo em seguida receba "busy".
   const controller = new AbortController();
   state.activeChat = { requestId: request.requestId, controller };
+
+  // Texto recebido até agora. Se a resposta for interrompida, ele é gravado com o status correspondente.
+  let assistantText = "";
+  let conversationId: string | undefined;
+  let replyRecorded = false;
+  const recordInterruptedReply = (status: InterruptedStatus): void => {
+    replyRecorded = true;
+    if (conversationId !== undefined && assistantText !== "") {
+      deps.store.appendMessage(
+        conversationId,
+        "assistant",
+        assistantText,
+        status,
+      );
+    }
+  };
+
   try {
     const conversation = resolveConversation(
       deps.store,
@@ -87,6 +108,7 @@ async function handleChatSend(
       return;
     }
 
+    conversationId = conversation.id;
     deps.store.appendMessage(conversation.id, "user", request.text);
     emit({
       type: "chat.started",
@@ -94,7 +116,6 @@ async function handleChatSend(
       conversationId: conversation.id,
     });
 
-    let assistantText = "";
     const events = deps.provider.send({
       prompt: request.text,
       sessionId: conversation.claudeSessionId,
@@ -114,13 +135,16 @@ async function handleChatSend(
           });
           break;
         case "done":
+          replyRecorded = true;
           deps.store.appendMessage(conversation.id, "assistant", assistantText);
           emit({ type: "chat.done", requestId: request.requestId });
           break;
         case "cancelled":
+          recordInterruptedReply("cancelled");
           emit({ type: "chat.cancelled", requestId: request.requestId });
           break;
         case "error":
+          recordInterruptedReply("error");
           emit({
             type: "chat.error",
             requestId: request.requestId,
@@ -131,6 +155,9 @@ async function handleChatSend(
       }
     }
   } catch (error) {
+    if (!replyRecorded) {
+      recordInterruptedReply("error");
+    }
     emit({
       type: "chat.error",
       requestId: request.requestId,

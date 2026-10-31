@@ -1,5 +1,5 @@
-export type { Message } from "./message.ts";
-export { isMessage } from "./message.ts";
+export type { Message, MessageStatus } from "./message.ts";
+export { MESSAGE_STATUSES, isMessage } from "./message.ts";
 export type {
   AgentEvent,
   AgentRequest,

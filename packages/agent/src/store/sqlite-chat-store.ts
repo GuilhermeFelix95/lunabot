@@ -1,20 +1,34 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import type { Message } from "@lunabot/shared";
+import {
+  MESSAGE_STATUSES,
+  type Message,
+  type MessageStatus,
+} from "@lunabot/shared";
 import type { ChatStore, ConversationRecord } from "./chat-store.ts";
 
 /**
  * Histórico em SQLite com o módulo nativo `node:sqlite` do Node 24.
  * Documentação: https://nodejs.org/docs/latest-v24.x/api/sqlite.html
  * (Stability 1.2, release candidate; sem flag desde o Node 22.13.)
+ * Migrações versionadas com `PRAGMA user_version`:
+ * https://www.sqlite.org/pragma.html#pragma_user_version
  */
 
 const BUSY_TIMEOUT_MS = 5_000;
 
-const SCHEMA = `
+const PRAGMAS = `
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
+`;
 
+/**
+ * Migrações em ordem. A posição `i` leva o banco da versão `i` para `i + 1`.
+ * Não altere migrações já publicadas; para mudar o esquema, acrescente uma nova.
+ */
+const MIGRATIONS: readonly string[] = [
+  // v1: tabelas iniciais. IF NOT EXISTS cobre bancos criados antes do versionamento.
+  `
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -30,7 +44,13 @@ const SCHEMA = `
     content TEXT NOT NULL,
     created_at TEXT NOT NULL
   ) STRICT;
-`;
+  `,
+  // v2: situação da mensagem. Bancos antigos ganham 'complete' em todas as linhas.
+  `
+  ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'
+    CHECK (status IN ('complete', 'cancelled', 'error'));
+  `,
+];
 
 interface ConversationRow {
   id: string;
@@ -42,6 +62,11 @@ interface MessageRow {
   id: string;
   role: string;
   content: string;
+  status: string;
+}
+
+interface UserVersionRow {
+  user_version: number;
 }
 
 function isConversationRow(row: unknown): row is ConversationRow {
@@ -67,8 +92,48 @@ function isMessageRow(row: unknown): row is MessageRow {
     "role" in row &&
     typeof row.role === "string" &&
     "content" in row &&
-    typeof row.content === "string"
+    typeof row.content === "string" &&
+    "status" in row &&
+    typeof row.status === "string"
   );
+}
+
+function isUserVersionRow(row: unknown): row is UserVersionRow {
+  return (
+    typeof row === "object" &&
+    row !== null &&
+    "user_version" in row &&
+    typeof row.user_version === "number"
+  );
+}
+
+/** Aplica as migrações pendentes, cada uma em sua transação. Falha interrompe a abertura. */
+function migrate(db: DatabaseSync): void {
+  const row: unknown = db.prepare("PRAGMA user_version").get();
+  if (!isUserVersionRow(row)) {
+    throw new Error("Não foi possível ler a versão do esquema do banco.");
+  }
+  const current = row.user_version;
+  if (current > MIGRATIONS.length) {
+    throw new Error(
+      `Banco em versão ${current}, mais nova que a suportada (${MIGRATIONS.length}).`,
+    );
+  }
+  for (let version = current; version < MIGRATIONS.length; version++) {
+    const sql = MIGRATIONS[version];
+    if (sql === undefined) {
+      throw new Error(`Migração ${version + 1} não encontrada.`);
+    }
+    db.exec("BEGIN");
+    try {
+      db.exec(sql);
+      db.exec(`PRAGMA user_version = ${version + 1}`);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
 }
 
 /** Converte uma linha do banco e falha se ela não tiver o formato esperado. */
@@ -90,12 +155,21 @@ function toRole(value: string): Message["role"] {
   throw new Error(`Papel de mensagem desconhecido no banco: ${value}`);
 }
 
+function toMessageStatus(value: string): MessageStatus {
+  const status = MESSAGE_STATUSES.find((known) => known === value);
+  if (status === undefined) {
+    throw new Error(`Status de mensagem desconhecido no banco: ${value}`);
+  }
+  return status;
+}
+
 export class SqliteChatStore implements ChatStore {
   private readonly db: DatabaseSync;
 
   constructor(filePath: string) {
     this.db = new DatabaseSync(filePath, { timeout: BUSY_TIMEOUT_MS });
-    this.db.exec(SCHEMA);
+    this.db.exec(PRAGMAS);
+    migrate(this.db);
   }
 
   close(): void {
@@ -141,13 +215,14 @@ export class SqliteChatStore implements ChatStore {
     conversationId: string,
     role: Message["role"],
     content: string,
+    status: MessageStatus = "complete",
   ): void {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO messages (id, conversation_id, role, content, created_at, status) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(randomUUID(), conversationId, role, content, now);
+      .run(randomUUID(), conversationId, role, content, now, status);
     this.db
       .prepare("UPDATE conversations SET updated_at = ? WHERE id = ?")
       .run(now, conversationId);
@@ -156,14 +231,19 @@ export class SqliteChatStore implements ChatStore {
   listMessages(conversationId: string): Message[] {
     const rows: unknown[] = this.db
       .prepare(
-        "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY rowid",
+        "SELECT id, role, content, status FROM messages WHERE conversation_id = ? ORDER BY rowid",
       )
       .all(conversationId);
     return rows.map((row) => {
       if (!isMessageRow(row)) {
         throw new Error("Linha de mensagem malformada no banco de dados.");
       }
-      return { id: row.id, role: toRole(row.role), content: row.content };
+      return {
+        id: row.id,
+        role: toRole(row.role),
+        content: row.content,
+        status: toMessageStatus(row.status),
+      };
     });
   }
 }

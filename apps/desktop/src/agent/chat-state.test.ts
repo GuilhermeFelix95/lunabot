@@ -68,7 +68,7 @@ describe("chatReducer", () => {
     });
   });
 
-  it("descarta a resposta parcial ao cancelar, sem apagar a mensagem do usuário", () => {
+  it("mantém a resposta parcial ao cancelar como mensagem cancelada", () => {
     let state = startSending();
     state = receive(state, {
       type: "chat.delta",
@@ -79,8 +79,47 @@ describe("chatReducer", () => {
 
     expect(state.draft).toBeUndefined();
     expect(state.activeRequestId).toBeUndefined();
+    expect(state.messages).toEqual([
+      { id: `${REQUEST_ID}:user`, role: "user", content: "oi" },
+      {
+        id: `${REQUEST_ID}:assistant`,
+        role: "assistant",
+        content: "par",
+        status: "cancelled",
+      },
+    ]);
+  });
+
+  it("não cria mensagem ao cancelar antes de chegar qualquer texto", () => {
+    let state = startSending();
+    state = receive(state, { type: "chat.cancelled", requestId: REQUEST_ID });
+
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?.role).toBe("user");
+  });
+
+  it("mantém a resposta parcial como mensagem com erro e mostra o erro do chat", () => {
+    let state = startSending();
+    state = receive(state, {
+      type: "chat.delta",
+      requestId: REQUEST_ID,
+      text: "par",
+    });
+    state = receive(state, {
+      type: "chat.error",
+      requestId: REQUEST_ID,
+      code: "cli-failed",
+      message: "CLI falhou.",
+    });
+
+    expect(state.error).toBe("CLI falhou.");
+    expect(state.activeRequestId).toBeUndefined();
+    expect(state.messages[state.messages.length - 1]).toEqual({
+      id: `${REQUEST_ID}:assistant`,
+      role: "assistant",
+      content: "par",
+      status: "error",
+    });
   });
 
   it("mostra o erro do chat e encerra o envio ativo", () => {
@@ -134,6 +173,27 @@ describe("chatReducer", () => {
     expect(state.messages).toEqual([
       { id: "m1", role: "user", content: "antes" },
     ]);
+  });
+
+  it("preserva o status das mensagens do histórico carregado", () => {
+    const state = receive(initialChatState, {
+      type: "history",
+      requestId: "h1",
+      conversation: {
+        id: CONVERSATION_ID,
+        messages: [
+          { id: "m1", role: "user", content: "antes" },
+          {
+            id: "m2",
+            role: "assistant",
+            content: "parcial",
+            status: "cancelled",
+          },
+        ],
+      },
+    });
+
+    expect(state.messages[1]?.status).toBe("cancelled");
   });
 
   it("limpa a conversa ao iniciar uma nova", () => {

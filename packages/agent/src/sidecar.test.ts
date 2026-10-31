@@ -14,7 +14,7 @@ const POLL_LIMIT = 500;
 /** Provedor de teste: responde sozinho, espera o cancelamento ou falha, conforme o modo. */
 class ScriptedProvider implements AiProvider {
   readonly calls: { prompt: string; sessionId: string | undefined }[] = [];
-  mode: "reply" | "wait" | "throw" = "reply";
+  mode: "reply" | "wait" | "throw" | "fail" | "fail-before-text" = "reply";
 
   getStatus(): Promise<CliStatus> {
     return Promise.resolve({ state: "ready" });
@@ -26,7 +26,15 @@ class ScriptedProvider implements AiProvider {
       throw new Error("quebrou");
     }
     yield { type: "session", sessionId: SESSION_ID };
+    if (this.mode === "fail-before-text") {
+      yield { type: "error", code: "cli-failed", message: "CLI falhou" };
+      return;
+    }
     yield { type: "delta", text: "olá" };
+    if (this.mode === "fail") {
+      yield { type: "error", code: "cli-failed", message: "CLI falhou" };
+      return;
+    }
     if (this.mode === "wait") {
       await new Promise<void>((resolve) => {
         options.signal.addEventListener("abort", () => resolve(), {
@@ -311,5 +319,62 @@ describe("runSidecar", () => {
       code: "internal",
       message: "Erro interno: quebrou",
     });
+  });
+
+  it("grava a resposta parcial com status cancelled ao cancelar após deltas", async () => {
+    provider.mode = "wait";
+    input.push({
+      type: "chat.send",
+      requestId: "c1",
+      conversationId: null,
+      text: "oi",
+    });
+    await waitFor(() => eventsFor("c1").some((e) => e.type === "chat.delta"));
+
+    input.push({ type: "chat.cancel", requestId: "c1" });
+    await waitFor(() =>
+      eventsFor("c1").some((e) => e.type === "chat.cancelled"),
+    );
+    await finish();
+
+    expect(
+      store.listMessages(startedConversationId("c1")).at(-1),
+    ).toMatchObject({ role: "assistant", content: "olá", status: "cancelled" });
+  });
+
+  it("grava a resposta parcial com status error e emite o erro do CLI após deltas", async () => {
+    provider.mode = "fail";
+    input.push({
+      type: "chat.send",
+      requestId: "c1",
+      conversationId: null,
+      text: "oi",
+    });
+    await finish();
+
+    expect(eventsFor("c1").at(-1)).toEqual({
+      type: "chat.error",
+      requestId: "c1",
+      code: "cli-failed",
+      message: "CLI falhou",
+    });
+    expect(
+      store.listMessages(startedConversationId("c1")).at(-1),
+    ).toMatchObject({ role: "assistant", content: "olá", status: "error" });
+  });
+
+  it("não grava resposta do assistente quando o erro chega antes de qualquer texto", async () => {
+    provider.mode = "fail-before-text";
+    input.push({
+      type: "chat.send",
+      requestId: "c1",
+      conversationId: null,
+      text: "oi",
+    });
+    await finish();
+
+    expect(
+      store.listMessages(startedConversationId("c1")).map((m) => m.role),
+    ).toEqual(["user"]);
   });
 });

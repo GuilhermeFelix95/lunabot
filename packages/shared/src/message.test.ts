@@ -19,4 +19,24 @@ describe("isMessage", () => {
     expect(isMessage({ id: "", role: "assistant", content: "oi" })).toBe(false);
     expect(isMessage({ id: "1", role: "assistant", content: 42 })).toBe(false);
   });
+
+  it("aceita os status de resposta interrompida e a ausência de status", () => {
+    for (const status of ["complete", "cancelled", "error"]) {
+      expect(
+        isMessage({ id: "1", role: "assistant", content: "oi", status }),
+      ).toBe(true);
+    }
+    expect(isMessage({ id: "1", role: "assistant", content: "oi" })).toBe(true);
+  });
+
+  it("rejeita status desconhecido", () => {
+    expect(
+      isMessage({
+        id: "1",
+        role: "assistant",
+        content: "oi",
+        status: "pending",
+      }),
+    ).toBe(false);
+  });
 });
