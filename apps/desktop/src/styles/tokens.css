@@ -1,0 +1,112 @@
+/*
+ * Design tokens do LunaBot: cores, tipografia, espaçamento, raios, sombras,
+ * transições e foco. Componentes usam só estes tokens, nunca valores fixos.
+ *
+ * Paleta: base areia (bg e sand) com texto quase preto e um acento lunar
+ * (azul-acinzentado). O acento frio contrasta com a base quente e não se
+ * confunde com os estados (ok, warn, error), que são cores quentes ou verdes.
+ *
+ * Contraste (WCAG 2.2, critério AA), pelos pares que a interface usa:
+ * - Texto (1.4.3, mínimo 4,5:1). Claro: texto sobre bg 15,65; sobre surface 17,18;
+ *   sobre sand 14,23; secundário sobre bg 5,25 e sobre surface 5,77; erro sobre bg 5,99.
+ *   Escuro: texto sobre bg 15,07; sobre surface 13,64; sobre sand 12,12;
+ *   secundário sobre bg 7,03 e sobre surface 6,37; erro sobre bg 8,65.
+ * - Controles, foco e indicadores de estado (1.4.11, mínimo 3:1). Claro: contorno
+ *   de controle sobre surface 3,79; foco sobre bg 5,98; ok 5,94 e warn 5,40 sobre bg.
+ *   Escuro: contorno de controle sobre surface 3,65; foco sobre bg 9,30; ok 10,58
+ *   e warn 10,92 sobre bg.
+ * - --color-border é decorativo (contraste 1,25 claro e 1,42 escuro). Nenhum
+ *   controle depende só dele: a borda que identifica o controle é --color-control.
+ *
+ * Os valores do tema escuro estão em dois blocos: prefers-color-scheme (quando o
+ * usuário não escolheu tema) e data-theme="dark" (escolha explícita). O teste
+ * tokens.test.ts confere que os dois são iguais e recalcula os contrastes acima.
+ */
+
+:root {
+  color-scheme: light;
+
+  --color-bg: #f7f4ee;
+  --color-surface: #ffffff;
+  --color-sand: #efe9df;
+  --color-text: #1d1b18;
+  --color-muted: #6b655c;
+  --color-border: #e2dbcf;
+  --color-control: #8a8277;
+  --color-accent: #4a5f78;
+  --color-focus: var(--color-accent);
+  --color-user-bubble: var(--color-sand);
+  --color-assistant-bubble: var(--color-surface);
+  --color-error: #b42318;
+  --color-ok: #1e6b3a;
+  --color-warn: #8a5a00;
+  --shadow-sm: 0 1px 2px rgb(29 27 24 / 0.06);
+
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-xl: 1.5rem;
+  --font-weight-semibold: 600;
+  --line-height-tight: 1.2;
+  --line-height-base: 1.5;
+  --tracking-tight: -0.02em;
+
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+
+  --border-width: 1px;
+  --size-dot: 0.625rem;
+  --opacity-disabled: 0.5;
+
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  --duration-fast: 150ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-bg: #1a1916;
+    --color-surface: #23221e;
+    --color-sand: #2d2b26;
+    --color-text: #f1ede6;
+    --color-muted: #aaa398;
+    --color-border: #37342e;
+    --color-control: #7f786d;
+    --color-accent: #a9bfd6;
+    --color-error: #ff9b8f;
+    --color-ok: #8fd9a6;
+    --color-warn: #f0c677;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #1a1916;
+  --color-surface: #23221e;
+  --color-sand: #2d2b26;
+  --color-text: #f1ede6;
+  --color-muted: #aaa398;
+  --color-border: #37342e;
+  --color-control: #7f786d;
+  --color-accent: #a9bfd6;
+  --color-error: #ff9b8f;
+  --color-ok: #8fd9a6;
+  --color-warn: #f0c677;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+  }
+}
