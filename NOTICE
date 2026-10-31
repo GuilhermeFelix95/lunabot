@@ -4,3 +4,7 @@ Copyright 2026 Guilherme Felix Ferreira
 Este produto é distribuído sob a Licença Apache, versão 2.0 (veja o arquivo LICENSE).
 
 O LunaBot não usa a marca "Claude Code" e não deriva de código do openbot.run.
+
+Componentes de terceiros:
+
+- Fonte Inter (pacote `@fontsource-variable/inter`), Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter), distribuída sob a SIL Open Font License, versão 1.1. Texto da licença em licenses/OFL-1.1-Inter.txt.
