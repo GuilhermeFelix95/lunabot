@@ -187,6 +187,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@lunabot/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@tauri-apps/api':
         specifier: ^2
         version: 2.12.4
@@ -211,13 +214,13 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@vitejs/plugin-react':
         specifier: ^6.0.2
-        version: 6.1.2(vite@8.3.5)
+        version: 6.1.2(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
       vite:
         specifier: ^8.0.16
-        version: 8.3.5
+        version: 8.3.5(@types/node@24.19.2)(esbuild@0.28.2)
 
   packages/agent:
     dependencies:
@@ -1681,10 +1684,10 @@ snapshots:
       '@typescript-eslint/types': 8.72.1
       eslint-visitor-keys: 5.0.1
 
-  '@vitejs/plugin-react@6.1.2(vite@8.3.5)':
+  '@vitejs/plugin-react@6.1.2(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.5
+      vite: 8.3.5(@types/node@24.19.2)(esbuild@0.28.2)
 
   '@vitest/mocker@5.0.5(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2))':
     dependencies:
@@ -2103,16 +2106,6 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
-
-  vite@8.3.5:
-    dependencies:
-      lightningcss: 1.33.0
-      picomatch: 4.0.7
-      postcss: 8.5.32
-      rolldown: 1.2.16
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      fsevents: 2.3.3
 
   vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2):
     dependencies:
