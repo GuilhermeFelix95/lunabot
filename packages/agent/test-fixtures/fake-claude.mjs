@@ -102,6 +102,12 @@ if (args[0] === "auth") {
       write(textDelta("parcial"));
       setInterval(() => {}, 1000);
       break;
+    case "hang-pid":
+      // Envia o próprio pid como delta, para o teste conferir se o processo morreu.
+      write(init());
+      write(textDelta(String(process.pid)));
+      setInterval(() => {}, 1000);
+      break;
     default:
       process.stderr.write(`cenário desconhecido: ${scenario}\n`);
       process.exitCode = 2;

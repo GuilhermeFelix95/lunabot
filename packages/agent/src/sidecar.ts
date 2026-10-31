@@ -10,8 +10,14 @@ import type { ChatStore, ConversationRecord } from "./store/chat-store.ts";
 /** Tamanho máximo do título de uma conversa, tirado da primeira mensagem. */
 const TITLE_MAX_LENGTH = 60;
 
-/** Status de uma resposta que terminou sem concluir. */
-type InterruptedStatus = Exclude<MessageStatus, "complete">;
+/**
+ * Intervalo mínimo entre gravações do rascunho enquanto a resposta chega.
+ * Limita a escrita no SQLite sem perder mais que meio segundo de texto se o processo cair.
+ */
+const DRAFT_FLUSH_INTERVAL_MS = 500;
+
+/** Status da linha do rascunho enquanto a resposta não terminou. Ficará assim se o processo cair. */
+const DRAFT_STATUS: MessageStatus = "error";
 
 export interface SidecarDeps {
   provider: AiProvider;
@@ -42,6 +48,69 @@ function parseRequestLine(line: string): AgentRequest | undefined {
     return undefined;
   }
   return isAgentRequest(value) ? value : undefined;
+}
+
+interface ReplyRecorder {
+  /** Acrescenta um trecho da resposta e agenda a gravação do rascunho. */
+  append(delta: string): void;
+  /** Grava o texto final com o status de término. Chamadas seguintes são ignoradas. */
+  finish(status: MessageStatus): void;
+}
+
+/**
+ * Grava a resposta do assistente enquanto ela chega. A linha nasce no primeiro delta
+ * com `DRAFT_STATUS` e é atualizada na mesma linha no fim, sem duplicar a mensagem.
+ */
+function createReplyRecorder(
+  store: ChatStore,
+  conversationId: string,
+): ReplyRecorder {
+  let text = "";
+  let messageId: string | undefined;
+  let flushTimer: NodeJS.Timeout | undefined;
+  let finished = false;
+
+  const cancelFlush = (): void => {
+    if (flushTimer !== undefined) {
+      clearTimeout(flushTimer);
+      flushTimer = undefined;
+    }
+  };
+  const flush = (): void => {
+    flushTimer = undefined;
+    if (messageId !== undefined) {
+      store.updateMessage(messageId, text, DRAFT_STATUS);
+    }
+  };
+
+  return {
+    append(delta) {
+      text += delta;
+      if (messageId === undefined) {
+        messageId = store.appendMessage(
+          conversationId,
+          "assistant",
+          text,
+          DRAFT_STATUS,
+        );
+      } else if (flushTimer === undefined) {
+        flushTimer = setTimeout(flush, DRAFT_FLUSH_INTERVAL_MS);
+      }
+    },
+    finish(status) {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      cancelFlush();
+      if (messageId !== undefined) {
+        store.updateMessage(messageId, text, status);
+      } else if (status === "complete") {
+        // Resposta concluída sem nenhum delta: grava a mensagem vazia, como antes.
+        store.appendMessage(conversationId, "assistant", text, status);
+      }
+    },
+  };
 }
 
 function resolveConversation(
@@ -76,21 +145,7 @@ async function handleChatSend(
   const controller = new AbortController();
   state.activeChat = { requestId: request.requestId, controller };
 
-  // Texto recebido até agora. Se a resposta for interrompida, ele é gravado com o status correspondente.
-  let assistantText = "";
-  let conversationId: string | undefined;
-  let replyRecorded = false;
-  const recordInterruptedReply = (status: InterruptedStatus): void => {
-    replyRecorded = true;
-    if (conversationId !== undefined && assistantText !== "") {
-      deps.store.appendMessage(
-        conversationId,
-        "assistant",
-        assistantText,
-        status,
-      );
-    }
-  };
+  let reply: ReplyRecorder | undefined;
 
   try {
     const conversation = resolveConversation(
@@ -108,8 +163,8 @@ async function handleChatSend(
       return;
     }
 
-    conversationId = conversation.id;
     deps.store.appendMessage(conversation.id, "user", request.text);
+    reply = createReplyRecorder(deps.store, conversation.id);
     emit({
       type: "chat.started",
       requestId: request.requestId,
@@ -127,7 +182,7 @@ async function handleChatSend(
           deps.store.setClaudeSessionId(conversation.id, event.sessionId);
           break;
         case "delta":
-          assistantText += event.text;
+          reply.append(event.text);
           emit({
             type: "chat.delta",
             requestId: request.requestId,
@@ -135,16 +190,15 @@ async function handleChatSend(
           });
           break;
         case "done":
-          replyRecorded = true;
-          deps.store.appendMessage(conversation.id, "assistant", assistantText);
+          reply.finish("complete");
           emit({ type: "chat.done", requestId: request.requestId });
           break;
         case "cancelled":
-          recordInterruptedReply("cancelled");
+          reply.finish("cancelled");
           emit({ type: "chat.cancelled", requestId: request.requestId });
           break;
         case "error":
-          recordInterruptedReply("error");
+          reply.finish("error");
           emit({
             type: "chat.error",
             requestId: request.requestId,
@@ -155,9 +209,7 @@ async function handleChatSend(
       }
     }
   } catch (error) {
-    if (!replyRecorded) {
-      recordInterruptedReply("error");
-    }
+    reply?.finish("error");
     emit({
       type: "chat.error",
       requestId: request.requestId,
@@ -216,7 +268,7 @@ async function handleRequest(
 /**
  * Loop do sidecar: lê uma requisição JSON por linha e escreve eventos JSON por linha.
  * Cada requisição roda sem bloquear a leitura, para que um cancelamento chegue durante o chat.
- * Retorna quando a entrada termina e todas as requisições em andamento acabam.
+ * Quando a entrada termina, cancela o chat ativo. Retorna quando todas as requisições acabam.
  */
 export async function runSidecar(
   lines: AsyncIterable<string>,
@@ -253,5 +305,7 @@ export async function runSidecar(
     void task.finally(() => pending.delete(task));
   }
 
+  // Sem stdin não há quem receba a resposta: o chat ativo é cancelado e o CLI filho é encerrado.
+  state.activeChat?.controller.abort();
   await Promise.all(pending);
 }
