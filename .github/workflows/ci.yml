@@ -1,9 +1,9 @@
+# O CI roda só manualmente, a pedido do usuário. Não há gatilho de push nem de
+# pull_request. Para disparar, use: gh workflow run ci.yml --ref <branch>
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   qualidade:
