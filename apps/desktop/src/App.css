@@ -86,6 +86,13 @@
   color: var(--color-muted);
 }
 
+/* Seletor composto: `.messages p` zera a margem e tem mais especificidade que a classe sozinha. */
+.messages .message-notice {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
 .empty {
   margin: auto;
   color: var(--color-muted);

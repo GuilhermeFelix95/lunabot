@@ -1,4 +1,12 @@
-import type { AgentEvent, CliStatus, Message } from "@lunabot/shared";
+import type {
+  AgentEvent,
+  CliStatus,
+  Message,
+  MessageStatus,
+} from "@lunabot/shared";
+
+/** Status de resposta que terminou sem concluir. */
+type InterruptedStatus = Exclude<MessageStatus, "complete">;
 
 /** Estado da tela de chat. `draft` é a resposta parcial em streaming, ainda não salva. */
 export interface ChatState {
@@ -36,9 +44,36 @@ function isActive(state: ChatState, requestId: string): boolean {
   return state.activeRequestId === requestId;
 }
 
-/** Encerra o chat ativo e descarta a resposta parcial, que o sidecar não salva. */
+/** Encerra o chat ativo sem tocar nas mensagens. */
 function endActiveChat(state: ChatState): ChatState {
   return { ...state, draft: undefined, activeRequestId: undefined };
+}
+
+/**
+ * Encerra o chat ativo e mantém o texto parcial como mensagem com `status`,
+ * igual ao que o sidecar grava. Sem texto, não cria mensagem.
+ */
+function interruptActiveChat(
+  state: ChatState,
+  requestId: string,
+  status: InterruptedStatus,
+): ChatState {
+  const ended = endActiveChat(state);
+  if (state.draft === undefined || state.draft === "") {
+    return ended;
+  }
+  return {
+    ...ended,
+    messages: [
+      ...state.messages,
+      {
+        id: `${requestId}:assistant`,
+        role: "assistant",
+        content: state.draft,
+        status,
+      },
+    ],
+  };
 }
 
 function exitMessage(code: number | null): string {
@@ -83,11 +118,16 @@ function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState {
         ],
       };
     case "chat.cancelled":
-      return isActive(state, event.requestId) ? endActiveChat(state) : state;
+      return isActive(state, event.requestId)
+        ? interruptActiveChat(state, event.requestId, "cancelled")
+        : state;
     case "chat.error":
       // Um erro de um envio recusado (ex.: busy) não encerra o chat que está ativo.
       return isActive(state, event.requestId)
-        ? { ...endActiveChat(state), error: event.message }
+        ? {
+            ...interruptActiveChat(state, event.requestId, "error"),
+            error: event.message,
+          }
         : { ...state, error: event.message };
   }
 }

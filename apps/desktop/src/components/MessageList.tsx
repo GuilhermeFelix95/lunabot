@@ -15,6 +15,9 @@ export function MessageList({ messages, draft }: MessageListProps) {
       {messages.map((message) => (
         <div key={message.id} className={`message message-${message.role}`}>
           <p>{message.content}</p>
+          {message.status !== undefined && message.status !== "complete" && (
+            <p className="message-notice">Resposta interrompida</p>
+          )}
         </div>
       ))}
       {draft !== undefined && (
