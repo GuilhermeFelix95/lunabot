@@ -21,12 +21,15 @@ Monorepo pnpm com workspaces `apps/*` e `packages/*`.
 - Instalar: `pnpm install`
 - Testar um arquivo: `pnpm vitest run <caminho do arquivo de teste>`, por exemplo `pnpm vitest run packages/shared/src/message.test.ts`
 - Suíte completa: `pnpm test` (somente quando eu pedir)
+- CI no GitHub (manual): `gh workflow run ci.yml --ref <branch>`
 - Lint e formatação: `pnpm lint` (ESLint + `prettier --check`); para corrigir formatação, `pnpm format`
 - Tipos: `pnpm typecheck`
 - Sidecar do agente (antes de `tauri dev`): `pnpm --filter @lunabot/agent build`, que gera `packages/agent/dist/sidecar.mjs`
 - Testes do agente ou do desktop: `pnpm --filter @lunabot/agent exec vitest run <arquivo>` ou `pnpm --filter desktop test`
 
 ## Armadilhas conhecidas
+
+- CI só quando o usuário pedir. O workflow `.github/workflows/ci.yml` roda apenas por `workflow_dispatch`, sem push nem pull_request. Não disparar `gh workflow run` por conta própria.
 
 - Desenvolvimento: o Rust roda `node` do PATH com o script em caminho fixo (`CARGO_MANIFEST_DIR/../../../packages/agent/dist/sidecar.mjs`). Empacotamento para distribuição está fora da Etapa 1.
 - O Rust define `LUNABOT_DATA_DIR` com `app_data_dir`. Sem essa variável o sidecar encerra com erro.
