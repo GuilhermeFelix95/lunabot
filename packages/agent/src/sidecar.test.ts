@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentEvent, CliStatus } from "@lunabot/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCliProvider } from "./claude-cli/claude-cli-provider.ts";
 import type { AiProvider, ProviderEvent, SendOptions } from "./provider.ts";
-import { runSidecar } from "./sidecar.ts";
+import { DRAFT_FLUSH_INTERVAL_MS, runSidecar } from "./sidecar.ts";
 import { SqliteChatStore } from "./store/sqlite-chat-store.ts";
 
 const SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
@@ -156,6 +156,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await finish().catch(() => undefined);
   store.close();
   rmSync(directory, { recursive: true, force: true });
@@ -421,6 +422,7 @@ describe("runSidecar", () => {
   });
 
   it("atualiza o rascunho com throttle, sem criar uma linha nova por delta", async () => {
+    vi.useFakeTimers();
     provider.mode = "wait-after-two-deltas";
     input.push({
       type: "chat.send",
@@ -428,12 +430,23 @@ describe("runSidecar", () => {
       conversationId: null,
       text: "oi",
     });
-    await waitFor(() => eventsFor("c1").some((e) => e.type === "chat.delta"));
+    await vi.advanceTimersByTimeAsync(0);
     const conversationId = startedConversationId("c1");
-    await waitFor(
-      () => store.listMessages(conversationId).at(-1)?.content === "olá mundo",
-    );
+    const rowsWith = (content: string) =>
+      store
+        .listMessages(conversationId)
+        .filter((m) => m.role === "assistant" && m.content === content);
 
+    expect(eventsFor("c1").filter((e) => e.type === "chat.delta")).toHaveLength(
+      2,
+    );
+    expect(rowsWith("olá")).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(DRAFT_FLUSH_INTERVAL_MS - 1);
+    expect(rowsWith("olá")).toHaveLength(1);
+    expect(rowsWith("olá mundo")).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1);
     const assistantRows = store
       .listMessages(conversationId)
       .filter((m) => m.role === "assistant");

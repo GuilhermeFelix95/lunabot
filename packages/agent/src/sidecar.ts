@@ -14,7 +14,7 @@ const TITLE_MAX_LENGTH = 60;
  * Intervalo mínimo entre gravações do rascunho enquanto a resposta chega.
  * Limita a escrita no SQLite sem perder mais que meio segundo de texto se o processo cair.
  */
-const DRAFT_FLUSH_INTERVAL_MS = 500;
+export const DRAFT_FLUSH_INTERVAL_MS = 500;
 
 /** Status da linha do rascunho enquanto a resposta não terminou. Ficará assim se o processo cair. */
 const DRAFT_STATUS: MessageStatus = "error";
