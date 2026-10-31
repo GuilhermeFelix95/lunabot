@@ -13,12 +13,21 @@ export interface ChatStore {
   getConversation(id: string): ConversationRecord | undefined;
   findLatestConversation(): ConversationRecord | undefined;
   setClaudeSessionId(conversationId: string, sessionId: string): void;
-  /** `status` padrão é `complete`; respostas interrompidas gravam o texto parcial com outro status. */
+  /**
+   * Grava uma mensagem e retorna o id dela. `status` padrão é `complete`;
+   * respostas interrompidas gravam o texto parcial com outro status.
+   */
   appendMessage(
     conversationId: string,
     role: Message["role"],
     content: string,
     status?: MessageStatus,
+  ): string;
+  /** Troca texto e status de uma mensagem já gravada. Falha se o id não existir. */
+  updateMessage(
+    messageId: string,
+    content: string,
+    status: MessageStatus,
   ): void;
   listMessages(conversationId: string): Message[];
 }

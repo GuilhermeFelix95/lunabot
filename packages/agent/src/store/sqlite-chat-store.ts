@@ -216,16 +216,31 @@ export class SqliteChatStore implements ChatStore {
     role: Message["role"],
     content: string,
     status: MessageStatus = "complete",
-  ): void {
+  ): string {
+    const id = randomUUID();
     const now = new Date().toISOString();
     this.db
       .prepare(
         "INSERT INTO messages (id, conversation_id, role, content, created_at, status) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(randomUUID(), conversationId, role, content, now, status);
+      .run(id, conversationId, role, content, now, status);
     this.db
       .prepare("UPDATE conversations SET updated_at = ? WHERE id = ?")
       .run(now, conversationId);
+    return id;
+  }
+
+  updateMessage(
+    messageId: string,
+    content: string,
+    status: MessageStatus,
+  ): void {
+    const { changes } = this.db
+      .prepare("UPDATE messages SET content = ?, status = ? WHERE id = ?")
+      .run(content, status, messageId);
+    if (changes === 0) {
+      throw new Error(`Mensagem não encontrada: ${messageId}`);
+    }
   }
 
   listMessages(conversationId: string): Message[] {

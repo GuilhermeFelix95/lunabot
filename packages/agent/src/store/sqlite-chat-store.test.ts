@@ -174,6 +174,36 @@ describe("SqliteChatStore", () => {
     ]);
   });
 
+  it("retorna o id da mensagem gravada", () => {
+    const created = store.createConversation("Título");
+
+    const id = store.appendMessage(created.id, "assistant", "parcial", "error");
+
+    expect(store.listMessages(created.id)).toEqual([
+      { id, role: "assistant", content: "parcial", status: "error" },
+    ]);
+  });
+
+  it("atualiza texto e status de uma mensagem já gravada, sem criar outra", () => {
+    const created = store.createConversation("Título");
+    const id = store.appendMessage(created.id, "assistant", "olá", "error");
+
+    store.updateMessage(id, "olá mundo", "complete");
+
+    expect(store.listMessages(created.id)).toEqual([
+      { id, role: "assistant", content: "olá mundo", status: "complete" },
+    ]);
+  });
+
+  it("recusa atualizar uma mensagem que não existe", () => {
+    const created = store.createConversation("Título");
+    store.appendMessage(created.id, "assistant", "olá", "error");
+
+    expect(() =>
+      store.updateMessage("id-inexistente", "x", "complete"),
+    ).toThrow("Mensagem não encontrada");
+  });
+
   it("não aceita status desconhecido no banco", () => {
     const created = store.createConversation("Título");
 
